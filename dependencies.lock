@@ -1,0 +1,32 @@
+dependencies:
+  idf:
+    source:
+      type: idf
+    version: 5.3.0
+  jgromes/radiolib:
+    component_hash: 024269f750d7eb181d07bd57ccec5e5e4e276dbb262d681a6501c8e2244e80f0
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.1'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 7.7.1
+  nixy4/u8g2:
+    component_hash: d23326bf33da6b0a41ef16caa527689d770bcb7c469d8d57ca18a42f4cfed81b
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 0.1.4
+direct_dependencies:
+- idf
+- jgromes/radiolib
+- nixy4/u8g2
+manifest_hash: fedcceb786b435f244a058aacecb3c92aca0394b655c059ab488a6a41353a880
+target: esp32s3
+version: 2.0.0

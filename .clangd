@@ -1,0 +1,10 @@
+CompileFlags:
+  CompilationDatabase: build
+  Add:
+    - --sysroot=/home/stepan/.espressif/tools/xtensa-esp-elf/esp-13.2.0_20240530/xtensa-esp-elf/xtensa-esp-elf
+    - -D__XTENSA__=1
+  Remove:
+    - -mlongcalls
+    - -fno-shrink-wrap
+    - -fstrict-volatile-bitfields
+    - -fno-tree-switch-conversion
