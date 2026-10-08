@@ -1,4 +1,28 @@
 dependencies:
+  h2zero/esp-nimble-cpp:
+    component_hash: 720050476f7fb47bd0aa08a94642fd09a50536391d60081858702a789405d76f
+    dependencies:
+    - name: espressif/esp_hosted
+      registry_url: https://components.espressif.com
+      require: private
+      rules:
+      - if: target in [esp32p4]
+      version: '*'
+    - name: espressif/esp_wifi_remote
+      registry_url: https://components.espressif.com
+      require: private
+      rules:
+      - if: target in [esp32p4]
+      version: '>=0.5.3'
+    - name: idf
+      require: private
+      rules:
+      - if: target in [esp32p4]
+      version: '>=5.3.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 2.5.0
   idf:
     source:
       type: idf
@@ -24,9 +48,10 @@ dependencies:
       type: service
     version: 0.1.4
 direct_dependencies:
+- h2zero/esp-nimble-cpp
 - idf
 - jgromes/radiolib
 - nixy4/u8g2
-manifest_hash: fedcceb786b435f244a058aacecb3c92aca0394b655c059ab488a6a41353a880
+manifest_hash: e4a74a132464264a2559f16be32be9cf6f2a7ec6d10e410f2366eb7b2e046781
 target: esp32s3
 version: 2.0.0

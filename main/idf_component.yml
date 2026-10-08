@@ -5,3 +5,4 @@ dependencies:
     version: '>=4.1.0'
   jgromes/radiolib: '*'
   nixy4/u8g2: '0.1.4'
+  h2zero/esp-nimble-cpp: '*'

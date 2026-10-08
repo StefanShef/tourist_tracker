@@ -49,6 +49,32 @@ void display_print(int x, int y, const char *str);
  */
 void display_draw_xbm(int x, int y, int width, int height, const uint8_t *xbm);
 
+/**
+ * @brief Show compass heading and GPS coordinates on the display.
+ *
+ * Draws a compass rose on the left half (arrow points North) and GPS latitude /
+ * longitude on the right half. Everything is composed into one frame and sent
+ * to the display in a single transfer.
+ *
+ * @param heading_deg Compass heading in degrees (0-360). Negative value means
+ *                    no valid magnetometer reading.
+ * @param latitude GPS latitude in decimal degrees.
+ * @param longitude GPS longitude in decimal degrees.
+ * @param gps_valid true if the coordinates are valid.
+ */
+/**
+ * @brief Draw the compass + coordinates sensor view.
+ *
+ * @param heading_deg Compass heading (0-360) or negative to show "No IMU".
+ * @param latitude    Coordinate latitude.
+ * @param longitude   Coordinate longitude.
+ * @param gps_valid   true if the coordinates are usable.
+ * @param from_phone  true if coordinates came from the BLE phone link
+ *                    (tag "BLE" is drawn), false for the GPS module ("GPS").
+ */
+void display_show_sensors(float heading_deg, double latitude, double longitude,
+                          bool gps_valid, bool from_phone);
+
 #ifdef __cplusplus
 }
 #endif

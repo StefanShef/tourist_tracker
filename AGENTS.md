@@ -8,10 +8,12 @@ This is an **ESP-IDF** firmware project named `hello_world`, adapted from the ES
 
 On boot the firmware:
 
-1. Powers the OLED via the Vext switch (tries GPIO 36, falls back to GPIO 40 for the V4-R8 revision), initializes the SSD1306, and draws the text "I love Lenusia!" plus a 32x32 heart bitmap.
-2. Enables the GC1109 front-end amplifier (`FEM_EN` on GPIO 2).
-3. Initializes the SX1262 through RadioLib using a custom ESP-IDF hardware abstraction layer (`Esp32S3Hal`).
-4. Transmits a `Hello Heltec V4! #N` LoRa packet every 5 seconds (868 MHz, 125 kHz BW, SF9, CR 4/5, private sync word, 14 dBm, preamble 8).
+1. Powers the OLED via the Vext switch (tries GPIO 36, falls back to GPIO 40 for the V4-R8 revision), initializes the SSD1306, and draws a greeting.
+2. Initializes the ICM20948 IMU (magnetometer) on I2C1 and the ATGM336H GPS on UART1.
+3. Starts a background task that updates the display every 200 ms with a compass arrow (pointing North) and the latest GPS coordinates.
+4. Enables the GC1109 front-end amplifier (`FEM_EN` on GPIO 2).
+5. Initializes the SX1262 through RadioLib using a custom ESP-IDF hardware abstraction layer (`Esp32S3Hal`).
+6. Transmits a `Hello Heltec V4! #N` LoRa packet every 5 seconds (868 MHz, 125 kHz BW, SF9, CR 4/5, private sync word, 14 dBm, preamble 8).
 
 Key facts:
 
@@ -25,6 +27,8 @@ Key facts:
 
 `main/idf_component.yml` pins `nixy4/u8g2: '0.1.4'`. That component uses `i2c_master_bus_config_t.flags.allow_pd`, which was introduced in ESP-IDF 5.4. On the project's ESP-IDF 5.3 the member is missing, so `CMakeLists.txt` applies an automated patch that strips `.flags.allow_pd = 0,` from `managed_components/nixy4__u8g2/src/port/esp32_hw_i2c.c` during `idf.py reconfigure`.
 
+The u8g2 port uses the new I2C master driver (`driver/i2c_master.h`). The legacy I2C driver (`driver/i2c.h`) cannot be linked at the same time — ESP-IDF detects both at startup and calls `abort()` with `CONFLICT! driver_ng is not allowed to be used with this old driver` before `app_main` runs (symptom: Vext/OLED and sensor rails never power up). All I2C code in this project must use the new driver.
+
 ## Repository Layout
 
 ```
@@ -34,6 +38,12 @@ Key facts:
 │   ├── CMakeLists.txt          # Registers C++ sources and component dependencies
 │   ├── display.h               # OLED display abstraction layer
 │   ├── display.cpp             # u8g2-based SSD1306 driver for Heltec V4
+│   ├── icm20948.h              # ICM20948 + AK09916 driver header
+│   ├── icm20948.cpp            # ICM20948 I2C driver (magnetometer heading)
+│   ├── gps.h                   # ATGM336H GPS driver header
+│   ├── gps.cpp                 # GPS UART + NMEA parser
+│   ├── phone_gps.h             # BLE NUS server header (phone coordinates)
+│   ├── phone_gps.cpp           # BLE NUS server (NimBLE), CSV/JSON coordinate parser
 │   ├── Esp32S3Hal.h            # RadioLib HAL header for ESP32-S3
 │   ├── Esp32S3Hal.cpp          # RadioLib HAL implementation (ESP-IDF SPI/GPIO/timer)
 │   ├── hello_world_main.cpp    # Application entry point (app_main)
@@ -89,17 +99,22 @@ idf.py menuconfig
 
 All functionality lives in the `main` component; there are no custom components.
 
-- **`main/hello_world_main.cpp`**: Application entry point (`extern "C" void app_main(void)`). Contains the Heltec V4 pin mapping as macros, initializes the OLED via `display_init()`, draws the greeting, enables the GC1109 FEM, brings up RadioLib, and runs the 5-second transmit loop. Log tag: `HELTEC_V4` (e.g. `HELTEC_V4: Radio init OK`, `HELTEC_V4: TX OK`).
-- **`main/display.h` / `main/display.cpp`**: Heltec V4 OLED abstraction. Powers the SSD1306 through Vext (GPIO 36, fallback GPIO 40), resets it, initializes u8g2 over ESP-IDF I2C, and exposes `display_init()`, `display_clear()`, `display_print()`, and `display_draw_xbm()`.
+- **`main/hello_world_main.cpp`**: Application entry point (`extern "C" void app_main(void)`). Contains the Heltec V4 pin mapping as macros, initializes the OLED / IMU / GPS, starts the sensor display task, enables the GC1109 FEM, brings up RadioLib, and runs the 5-second transmit loop. Log tag: `HELTEC_V4` (e.g. `HELTEC_V4: Radio init OK`, `HELTEC_V4: TX OK`).
+- **`main/display.h` / `main/display.cpp`**: Heltec V4 OLED abstraction. Powers the SSD1306 through Vext (GPIO 36, fallback GPIO 40), resets it, initializes u8g2 over ESP-IDF I2C, and exposes `display_init()`, `display_clear()`, `display_print()`, `display_draw_xbm()`, and `display_show_sensors()`.
+- **`main/icm20948.h` / `main/icm20948.cpp`**: ICM20948 driver using the ESP-IDF **new** I2C master driver (`driver/i2c_master.h`) on port 1 (GPIO16 SDA / GPIO15 SCL). Puts the chip into bypass mode so the embedded AK09916 magnetometer is read directly at 0x0C (CNTL2 = 0x31 starts continuous mode 2; the AK09916 device ID is WIA2 at 0x01 = 0x09, not WIA1). Computes a tilt-compensated heading (accelerometer pitch/roll + hard-iron/soft-iron min-max field calibration, auto-run for ~25 s after boot via `icm20948_cal_start()`). The legacy `driver/i2c.h` must NOT be used anywhere in the project: ESP-IDF 5.x aborts at startup ("CONFLICT! driver_ng ...") if both drivers are linked.
+- **`main/gps.h` / `main/gps.cpp`**: ATGM336H driver using UART1 (RX GPIO38, TX GPIO39, 9600 baud). Parses `$GPGGA`/`$GNGGA` NMEA sentences and caches the latest latitude/longitude fix.
+- **`main/phone_gps.h` / `main/phone_gps.cpp`**: BLE server built on `esp-nimble-cpp` that emulates the Nordic UART Service (NUS, service `6E400001-...`, RX `...0002` write, TX `...0003` notify+CCCD). Advertises as `"Heltec-V4"`, re-advertises automatically after disconnect. Parses coordinates pushed by a phone in `GPS:lat,lng,alt,acc` (sscanf) or `{"lat":..,"lng":..}` (light string scan) format, caches the fix, and ACKs with `OK\n` over notify. `sensor_display_task` prefers phone coordinates when a phone is connected and the fix is fresh (<10 s), otherwise falls back to the GPS module.
 - **`main/Esp32S3Hal.h` / `main/Esp32S3Hal.cpp`**: Custom RadioLib `RadioLibHal` subclass for ESP32-S3 built on the ESP-IDF driver API (GPIO, `spi_master`, `esp_timer`, FreeRTOS delays, GPIO ISR dispatch). The SPI device runs in mode 0 at 2 MHz with `spics_io_num = -1` because NSS is toggled manually by RadioLib.
-- **`main/CMakeLists.txt`**: `idf_component_register(SRCS "Esp32S3Hal.cpp" "display.cpp" "hello_world_main.cpp" ... REQUIRES jgromes__radiolib nixy4__u8g2 driver esp_timer)`.
+- **`main/CMakeLists.txt`**: `idf_component_register(SRCS "Esp32S3Hal.cpp" "display.cpp" "icm20948.cpp" "gps.cpp" "phone_gps.cpp" "hello_world_main.cpp" ... REQUIRES jgromes__radiolib nixy4__u8g2 h2zero__esp-nimble-cpp driver esp_timer)`.
 
-### Heltec V4 pin mapping (from `hello_world_main.cpp`)
+### Heltec V4 pin mapping (from `hello_world_main.cpp` and sensor drivers)
 
 - LoRa (SX1262 on SPI2): SCK GPIO 9, MISO GPIO 11, MOSI GPIO 10, NSS GPIO 8, DIO1 GPIO 14, RST GPIO 12, BUSY GPIO 13.
 - GC1109 front-end enable (`FEM_EN`): GPIO 2.
-- OLED SSD1306 (I2C): SDA GPIO 17, SCL GPIO 18, RST GPIO 21.
+- OLED SSD1306 (I2C0): SDA GPIO 17, SCL GPIO 18, RST GPIO 21.
 - OLED power switch (Vext): GPIO 36 (GPIO 40 on V4-R8).
+- ICM20948 IMU (I2C1): SDA GPIO 16, SCL GPIO 15, INT GPIO 33.
+- ATGM336H GPS (UART1): module TX → GPIO 38 (ESP RX), module RX → GPIO 39 (ESP TX), PPS GPIO 41.
 
 ## Dependencies
 
@@ -107,6 +122,7 @@ Declared in `main/idf_component.yml` (resolved versions in `dependencies.lock`):
 
 - `jgromes/radiolib: '*'` → 7.7.1 (Espressif component registry). Used by `main`.
 - `nixy4/u8g2: '0.1.4'` → 0.1.4 (registry). Used by `main` through `display.cpp`/`display.h`.
+- `h2zero/esp-nimble-cpp: '*'` → 2.x (registry). NimBLE C++ BLE stack used by `main` through `phone_gps.cpp`. Requires `CONFIG_BT_ENABLED=y` and `CONFIG_BT_NIMBLE_ENABLED=y` in `sdkconfig`.
 
 The display driver is implemented locally in `main/display.cpp`/`main/display.h` on top of u8g2.
 
@@ -147,6 +163,7 @@ Test markers used: `supported_targets`, `preview_targets`, `generic`, `linux`, `
   - Partition table: single app (`CONFIG_PARTITION_TABLE_SINGLE_APP=y`)
   - Compiler optimization: Debug (`CONFIG_OPTIMIZATION_LEVEL_DEBUG=y`)
   - FreeRTOS tick: 100 Hz; main task stack: 3584 bytes
+  - Bluetooth: NimBLE host enabled (`CONFIG_BT_ENABLED=y`, `CONFIG_BT_NIMBLE_ENABLED=y`) for the BLE NUS server
 - **`sdkconfig.ci`**: empty; add CI-specific Kconfig overrides here if needed.
 - **`.clangd`**: points clangd at the `build/` compilation database and adjusts Xtensa toolchain flags (sysroot under `~/.espressif/tools/xtensa-esp-elf/esp-13.2.0_20240530`); the sysroot path is machine-specific.
 

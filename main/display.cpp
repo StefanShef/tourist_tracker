@@ -6,6 +6,8 @@
 
 #include "display.h"
 
+#include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "driver/gpio.h"
@@ -172,6 +174,67 @@ void display_draw_xbm(int x, int y, int width, int height, const uint8_t *xbm)
 
     xSemaphoreTake(display_mutex, portMAX_DELAY);
     u8g2_DrawXBM(&u8g2, x, y, width, height, xbm);
+    u8g2_SendBuffer(&u8g2);
+    xSemaphoreGive(display_mutex);
+}
+
+void display_show_sensors(float heading_deg, double latitude, double longitude,
+                          bool gps_valid, bool from_phone)
+{
+    if (display_mutex == NULL) {
+        return;
+    }
+
+    xSemaphoreTake(display_mutex, portMAX_DELAY);
+    u8g2_ClearBuffer(&u8g2);
+
+    // Compass on the left half of the display.
+    const int cx = 32;
+    const int cy = 32;
+    const int r = 28;
+
+    u8g2_DrawCircle(&u8g2, cx, cy, r, U8G2_DRAW_ALL);
+
+    if (heading_deg >= 0.0f) {
+        // Arrow points North: rotate by -heading so the arrow always shows where North is.
+        float rad = (360.0f - heading_deg) * (float)M_PI / 180.0f;
+        int tip_x = cx + (int)((r - 4) * sinf(rad));
+        int tip_y = cy - (int)((r - 4) * cosf(rad));
+        u8g2_DrawLine(&u8g2, cx, cy, tip_x, tip_y);
+
+        // Arrowhead.
+        int head_len = 6;
+        int head_angle1_x = tip_x - (int)(head_len * sinf(rad + 0.6f));
+        int head_angle1_y = tip_y + (int)(head_len * cosf(rad + 0.6f));
+        int head_angle2_x = tip_x - (int)(head_len * sinf(rad - 0.6f));
+        int head_angle2_y = tip_y + (int)(head_len * cosf(rad - 0.6f));
+        u8g2_DrawLine(&u8g2, tip_x, tip_y, head_angle1_x, head_angle1_y);
+        u8g2_DrawLine(&u8g2, tip_x, tip_y, head_angle2_x, head_angle2_y);
+
+        // Cardinal mark.
+        u8g2_SetFont(&u8g2, u8g2_font_5x7_tf);
+        u8g2_DrawStr(&u8g2, cx - 2, cy - r + 8, "N");
+    } else {
+        u8g2_SetFont(&u8g2, u8g2_font_6x12_t_cyrillic);
+        u8g2_DrawStr(&u8g2, cx - 18, cy + 4, "No IMU");
+    }
+
+    // Coordinate source tag in the top-right corner.
+    u8g2_SetFont(&u8g2, u8g2_font_5x7_tf);
+    u8g2_DrawStr(&u8g2, 100, 8, from_phone ? "BLE" : "GPS");
+
+    // GPS coordinates on the right half.
+    char buf[32];
+    u8g2_SetFont(&u8g2, u8g2_font_6x12_t_cyrillic);
+    if (gps_valid) {
+        snprintf(buf, sizeof(buf), "Lat:%.5f", latitude);
+        u8g2_DrawStr(&u8g2, 68, 24, buf);
+        snprintf(buf, sizeof(buf), "Lon:%.5f", longitude);
+        u8g2_DrawStr(&u8g2, 68, 44, buf);
+    } else {
+        u8g2_DrawStr(&u8g2, 68, 32, "No fix");
+    }
+
     u8g2_SendBuffer(&u8g2);
     xSemaphoreGive(display_mutex);
 }
