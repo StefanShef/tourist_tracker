@@ -10,34 +10,16 @@
 #include <stdbool.h>
 
 /**
- * @brief Initialize the ICM20948 IMU and its embedded AK09916 magnetometer.
+ * @brief Initialize the ICM20948 IMU, the AK09916 magnetometer and the DMP.
  *
- * Uses I2C1 on GPIO15 (SCL) / GPIO16 (SDA). Puts the ICM20948 into I2C bypass
- * mode so the AK09916 is directly accessible at address 0x0C.
+ * Uses I2C1 on GPIO15 (SCL) / GPIO16 (SDA), driven through the vendored
+ * SparkFun ICM-20948 C core. The DMP is configured for 9-axis orientation
+ * (Quat9). Starts a ~25 s magnetometer calibration run — rotate the board
+ * through all orientations after boot.
  *
  * @return true on success, false on failure.
  */
 bool icm20948_init(void);
-
-/**
- * @brief Read the latest magnetometer sample.
- *
- * @param x Raw X-axis value.
- * @param y Raw Y-axis value.
- * @param z Raw Z-axis value.
- * @return true if new data was read, false otherwise.
- */
-bool icm20948_read_mag(int16_t *x, int16_t *y, int16_t *z);
-
-/**
- * @brief Read the latest accelerometer sample from the ICM20948 itself.
- *
- * @param x Raw X-axis value.
- * @param y Raw Y-axis value.
- * @param z Raw Z-axis value.
- * @return true on success, false otherwise.
- */
-bool icm20948_read_accel(int16_t *x, int16_t *y, int16_t *z);
 
 /**
  * @brief Magnetometer calibration: hard-iron offset + soft-iron scale.
@@ -68,10 +50,11 @@ bool icm20948_cal_active(void);
 bool icm20948_cal_finish(void);
 
 /**
- * @brief Compute a tilt-compensated compass heading.
+ * @brief Compute the compass heading.
  *
- * Pitch/roll come from the accelerometer; the magnetometer is corrected with
- * the current calibration (identity until a calibration run finishes).
+ * Primary source: the DMP 9-axis orientation quaternion (accel + gyro +
+ * magnetometer fusion). Fallback while the fusion warms up: tilt-compensated
+ * accel + compass packets with the current hard/soft-iron calibration.
  *
  * @return Heading in degrees (0-360, North = 0), or -1.0f if no data.
  */
